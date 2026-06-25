@@ -1,70 +1,90 @@
-# Shut Up Popups — Firefox extension
+# Shut Up Reddit Popups — Firefox for Android extension
 
-A lightweight Firefox extension that removes annoying popups, modal overlays,
-login/signup walls, cookie banners and "open in app" interstitials that block
-you from actually using a website. It also restores scrolling when a popup
+A lightweight extension for **Firefox on Android** that removes Reddit's
+annoying login/signup walls, "open in app" interstitials and modal overlays
+that block you from reading the site. It also restores scrolling when a popup
 freezes the page.
+
+It **only runs on `reddit.com`** (and its subdomains). It does nothing on any
+other site.
 
 ## What it does
 
-1. **Restores scrolling** — many popups set `overflow: hidden` / `position: fixed`
-   on the page to trap you. The extension undoes that so you can scroll again.
-2. **Removes known popups** — a curated list of common patterns (cookie/GDPR
-   walls, newsletter and signup modals, Reddit/Quora/Medium login walls and app
-   prompts).
+1. **Restores scrolling** — Reddit sets `overflow: hidden` / `position: fixed`
+   on the page to trap you behind a wall. The extension undoes that.
+2. **Removes known Reddit popups** — login/signup drawers, "continue in app"
+   prompts, and generic cookie/consent banners.
 3. **Removes blocking overlays heuristically** — detects full-screen, high
-   `z-index`, pointer-blocking dimming layers that cover the page and removes
-   them, while being careful not to delete the real page content.
+   `z-index`, pointer-blocking dimming layers and removes them, while being
+   careful not to delete the real page content.
 
 It keeps watching the page (via a `MutationObserver`), so popups injected after
 load are removed too.
 
-## Install (temporary, for development)
+## Install on Firefox for Android
 
-1. Open Firefox and go to `about:debugging#/runtime/this-firefox`.
-2. Click **Load Temporary Add-on…**.
-3. Select the `manifest.json` file in this folder.
+Firefox for Android only installs extensions that are **signed by Mozilla**, so
+you first get the add-on signed, then install the resulting `.xpi` on your
+phone. (There is no "load temporary add-on" on Android like there is on
+desktop.)
 
-The extension icon appears in the toolbar. Temporary add-ons are removed when
-Firefox restarts.
+### Step 1 — Package the extension
 
-## Packaging
-
-To build a distributable `.zip` / `.xpi`:
+On any computer, from inside this project folder:
 
 ```sh
-zip -r -FS shutup-popups.zip manifest.json icons src
+zip -r -FS shutup-reddit-popups.zip manifest.json icons src
 ```
 
-You can then submit it to [addons.mozilla.org](https://addons.mozilla.org/) for
-signing, or load the zip via `about:debugging`.
+### Step 2 — Get it signed by Mozilla (free)
+
+1. Create a developer account at
+   [addons.mozilla.org](https://addons.mozilla.org/developers/).
+2. **Submit a New Add-on** → choose **"On your own"** (self/unlisted
+   distribution) if you just want it for yourself.
+3. Upload `shutup-reddit-popups.zip`. Mozilla validates and signs it, then lets
+   you **download the signed `.xpi`**.
+
+### Step 3 — Install on your phone
+
+1. Put the signed `.xpi` somewhere you can reach from the phone (email it to
+   yourself, a cloud drive, or open the AMO download link directly in Firefox
+   on the phone).
+2. In Firefox for Android, open the `.xpi` link/file — Firefox will prompt to
+   **Add** the extension. Tap **Add**.
+3. Open `reddit.com`. Tap the **⋮ menu → Extensions** (or **Add-ons**) to open
+   the panel, toggle, or run **Remove popups now**.
+
+> Tip for faster testing: **Firefox Nightly for Android** lets you install your
+> own unsigned add-on through a custom add-on collection
+> (Settings → "Install extension from file" / custom collection), which skips
+> the signing wait. For day-to-day use on regular Firefox, the signed `.xpi`
+> route above is the reliable one.
 
 ## Usage
 
-- Click the toolbar icon for the quick panel:
-  - **Block popups here** — toggle the extension for the current site.
-  - **Extension enabled (all sites)** — global on/off.
+- Open the extension's panel from Firefox's menu while on Reddit:
+  - **Block popups here** — toggle the extension for Reddit.
+  - **Extension enabled** — master on/off.
   - **Remove popups now** — force an immediate sweep.
   - Shows how many elements were removed on the current page.
-- Open **More settings** (or the add-on's options) to:
-  - Toggle each removal strategy independently.
-  - Manage the list of sites where the extension is disabled.
+- The options page lets you toggle each removal strategy independently.
 
 ## Project layout
 
 ```
-manifest.json        Extension manifest (Manifest V2, Firefox/Gecko)
-icons/icon.svg       Toolbar / add-on icon
-src/content.js       Core engine: detection + removal, runs on every page
-src/popup.html/.css/.js   Toolbar quick panel
-src/options.html/.css/.js Full settings page
+manifest.json        Extension manifest (Manifest V2, Gecko/Android)
+icons/icon.svg       Add-on icon
+src/content.js       Core engine: detection + removal, runs only on reddit.com
+src/popup.html/.css/.js   Extension panel
+src/options.html/.css/.js Settings page
 ```
 
 ## Notes & limitations
 
 - The heuristic overlay remover is conservative (it skips elements that contain
-  most of the page's visible text), but on some sites it may remove something
-  you wanted. If a site misbehaves, disable the extension for that site from the
-  toolbar panel, or turn off "Remove full-screen blocking overlays" in settings.
+  most of the page's visible text). If something looks off, turn off
+  "Remove full-screen blocking overlays" in the settings page.
 - This removes popups from the page DOM; it does not block network requests or
-  trackers. Pair it with a content blocker (e.g. uBlock Origin) for that.
+  trackers. Pair it with a content blocker (e.g. uBlock Origin, which also runs
+  on Firefox for Android) for that.
