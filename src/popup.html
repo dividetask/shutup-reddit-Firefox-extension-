@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>Shut Up Popups</title>
+</head>
+<body>
+  <header>
+    <h1>Shut Up Popups</h1>
+  </header>
+
+  <main>
+    <p class="site">On <strong id="site">this site</strong></p>
+
+    <label class="row toggle">
+      <span>Block popups here</span>
+      <input type="checkbox" id="siteEnabled" />
+      <span class="switch" aria-hidden="true"></span>
+    </label>
+
+    <label class="row toggle">
+      <span>Extension enabled (all sites)</span>
+      <input type="checkbox" id="globalEnabled" />
+      <span class="switch" aria-hidden="true"></span>
+    </label>
+
+    <button id="sweepNow" class="primary">Remove popups now</button>
+
+    <p class="stats">Removed on this page: <strong id="count">0</strong></p>
+  </main>
+
+  <footer>
+    <a href="#" id="openOptions">More settings</a>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

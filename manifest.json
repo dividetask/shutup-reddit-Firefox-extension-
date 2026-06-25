@@ -1,0 +1,38 @@
+{
+  "manifest_version": 2,
+  "name": "Shut Up Popups",
+  "version": "1.0.0",
+  "description": "Removes annoying popups, modal overlays, login walls and scroll locks that block you from using a website.",
+  "icons": {
+    "48": "icons/icon.svg",
+    "96": "icons/icon.svg"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "shutup-popups@logicalbuzz.com",
+      "strict_min_version": "78.0"
+    }
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "<all_urls>"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "browser_action": {
+    "default_title": "Shut Up Popups",
+    "default_icon": "icons/icon.svg",
+    "default_popup": "src/popup.html"
+  },
+  "options_ui": {
+    "page": "src/options.html",
+    "open_in_tab": false
+  }
+}

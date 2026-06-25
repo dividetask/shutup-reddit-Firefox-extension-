@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="options.css" />
+  <title>Shut Up Popups — Settings</title>
+</head>
+<body>
+  <h1>Shut Up Popups — Settings</h1>
+
+  <section>
+    <h2>What to remove</h2>
+    <label class="row">
+      <input type="checkbox" id="enabled" />
+      <span>Enable the extension</span>
+    </label>
+    <label class="row">
+      <input type="checkbox" id="removeKnownPopups" />
+      <span>Remove known popups (cookie walls, signup modals, app prompts)</span>
+    </label>
+    <label class="row">
+      <input type="checkbox" id="removeOverlays" />
+      <span>Remove full-screen blocking overlays (heuristic)</span>
+    </label>
+    <label class="row">
+      <input type="checkbox" id="restoreScroll" />
+      <span>Restore scrolling when a popup locks the page</span>
+    </label>
+  </section>
+
+  <section>
+    <h2>Disabled sites</h2>
+    <p class="hint">The extension will not run on these hostnames.</p>
+    <div class="add">
+      <input type="text" id="newSite" placeholder="example.com" />
+      <button id="addSite">Add</button>
+    </div>
+    <ul id="siteList"></ul>
+  </section>
+
+  <p id="status" class="status"></p>
+
+  <script src="options.js"></script>
+</body>
+</html>
