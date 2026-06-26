@@ -1,3 +1,2 @@
-# Build artifacts
-*.zip
+# Signed build output (downloaded from AMO)
 *.xpi
