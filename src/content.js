@@ -172,6 +172,7 @@
     try {
       const clickable = document.querySelectorAll("button, a, [role='button']");
       for (const el of clickable) {
+        if (survivingNagButtons.length >= 15) break; // bound the work
         const t = (el.textContent || "").trim();
         if (t.length > 80 || !NAG_TEXT.test(t)) continue;
         const chain = [];
@@ -188,11 +189,14 @@
             zIndex: cs.zIndex
           });
         }
-        const wrap = el.closest("div") || el;
+        // Record only the button's own HTML (small). The ancestor chain above
+        // already carries the class/id info needed to build a selector; we
+        // deliberately avoid serializing the wrapper's whole subtree, which
+        // can be huge and is what made capture hang.
         survivingNagButtons.push({
           buttonText: t,
           chain,
-          html: (wrap.outerHTML || "").slice(0, 3000)
+          html: (el.outerHTML || "").slice(0, 600)
         });
       }
     } catch (e) {
@@ -206,7 +210,7 @@
       );
       let i = 0;
       for (const el of hinted) {
-        if (i++ >= 50) break;
+        if (i++ >= 30) break;
         xpromoHints.push(snapshot(el, "hint"));
       }
     } catch (e) {

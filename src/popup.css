@@ -104,6 +104,17 @@ button.secondary:hover { background: #ececec; }
   word-break: break-word;
 }
 
+#reportOut {
+  width: 100%;
+  height: 120px;
+  margin-top: 8px;
+  font-family: monospace;
+  font-size: 11px;
+  white-space: pre;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
 .stats {
   margin: 6px 0 0;
   color: var(--muted);

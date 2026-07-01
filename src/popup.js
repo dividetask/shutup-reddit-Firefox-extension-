@@ -104,48 +104,84 @@ els.sweepNow.addEventListener("click", () => {
   });
 });
 
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("timed out")), ms)
+    )
+  ]);
+}
+
 els.captureDom.addEventListener("click", () => {
   els.captureHint.textContent = "Capturing…";
+  els.reportOut.hidden = true;
+
   activeTab().then((tab) => {
     if (!tab) {
       els.captureHint.textContent = "No active tab.";
       return;
     }
-    api.tabs
-      .sendMessage(tab.id, { type: "captureDom" })
+    // Never block forever: if the page is too busy to answer in 5s, bail out
+    // with actionable advice instead of hanging on "Capturing…".
+    withTimeout(api.tabs.sendMessage(tab.id, { type: "captureDom" }), 5000)
       .then((report) => {
         if (!report) {
           els.captureHint.textContent =
-            "No response (is this a reddit.com tab?).";
+            "No response — open a reddit.com tab and try again.";
           return;
         }
         report.generatedAt = new Date().toISOString();
         const json = JSON.stringify(report, null, 2);
-        const blob = new Blob([json], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const stamp = report.generatedAt.replace(/[:.]/g, "-");
-        // Save into a dedicated subfolder so it can be pulled in isolation
-        // (never the whole Downloads directory).
-        const filename =
-          "shutup-reddit-debug/shutup-reddit-dom-" + stamp + ".json";
-        if (api.downloads && api.downloads.download) {
-          api.downloads
-            .download({ url, filename, saveAs: false })
-            .then(() => {
-              els.captureHint.textContent = "Saved to Downloads/" + filename;
-            })
-            .catch((err) => {
-              els.captureHint.textContent = "Download failed: " + err;
-              window.open(url, "_blank");
-            });
-        } else {
-          window.open(url, "_blank");
-          els.captureHint.textContent = "Opened report in a new tab.";
+
+        // Primary path: show it in the box AND copy to clipboard, so you can
+        // paste it straight into chat — no adb / Downloads needed.
+        els.reportOut.hidden = false;
+        els.reportOut.value = json;
+        els.reportOut.focus();
+        els.reportOut.select();
+
+        let msg = "Captured " + json.length + " chars. ";
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(json).then(
+              () => {
+                els.captureHint.textContent =
+                  msg + "Copied to clipboard — paste it to share.";
+              },
+              () => {
+                els.captureHint.textContent =
+                  msg + "Select the text below and copy it.";
+              }
+            );
+          } else {
+            els.captureHint.textContent =
+              msg + "Select the text below and copy it.";
+          }
+        } catch (e) {
+          els.captureHint.textContent =
+            msg + "Select the text below and copy it.";
+        }
+
+        // Best-effort file download too — non-blocking, flat filename.
+        try {
+          const url = URL.createObjectURL(
+            new Blob([json], { type: "application/json" })
+          );
+          if (api.downloads && api.downloads.download) {
+            api.downloads
+              .download({ url, filename: "shutup-reddit-dom.json", saveAs: false })
+              .catch(() => {});
+          }
+        } catch (e) {
+          /* ignore — the textarea/clipboard is the real deliverable */
         }
       })
-      .catch(() => {
+      .catch((err) => {
         els.captureHint.textContent =
-          "Content script not reachable on this page.";
+          "Capture " +
+          err.message +
+          ". The page may be busy — reload the extension (press R) and retry.";
       });
   });
 });
