@@ -405,13 +405,13 @@
    * observing Reddit's constantly-mutating DOM is what saturated the main
    * thread and made both the extension and the debug capture feel frozen.
    *
-   *  - lightScan():  cheap selectors + Reddit nag text + scroll unlock. Runs
-   *                  every SCAN_INTERVAL ms. The pricier overlay heuristic only
-   *                  runs on every 4th tick to keep the common case near-free.
+   *  - lightScan():  cheap selectors + Reddit nag text + scroll unlock + a
+   *                  budgeted overlay heuristic. Runs every SCAN_INTERVAL ms,
+   *                  starting only after START_DELAY so page load is untouched.
    *  - fullSweep():  one thorough pass, for the manual "Remove popups now".
    * --------------------------------------------------------------------- */
   const SCAN_INTERVAL = 5000; // ms between periodic scans
-  const FIRST_SCAN_DELAY = 2500; // keep page load itself smooth
+  const START_DELAY = 5000; // do NOTHING for the first 5s so the page loads freely
   const OVERLAY_TAGS = "div, section, aside, dialog, ion-modal";
 
   // Elements we've already inspected. On each scan we skip these so we only
@@ -476,17 +476,27 @@
   }
 
   let scanTimer = null;
+  let startTimer = null;
   function startScanning() {
-    if (scanTimer) return;
-    scanTimer = setInterval(lightScan, SCAN_INTERVAL);
-    // First scan a couple seconds in (not at load).
-    setTimeout(lightScan, FIRST_SCAN_DELAY);
+    if (scanTimer || startTimer) return;
+    // Do absolutely nothing for the first START_DELAY ms so the page can load
+    // unimpeded; only then begin the periodic scan.
+    startTimer = setTimeout(() => {
+      startTimer = null;
+      if (!active) return;
+      lightScan();
+      scanTimer = setInterval(lightScan, SCAN_INTERVAL);
+    }, START_DELAY);
   }
 
   function stopScanning() {
     if (scanTimer) {
       clearInterval(scanTimer);
       scanTimer = null;
+    }
+    if (startTimer) {
+      clearTimeout(startTimer);
+      startTimer = null;
     }
   }
 

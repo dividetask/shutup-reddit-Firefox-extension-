@@ -104,67 +104,65 @@ els.sweepNow.addEventListener("click", () => {
   });
 });
 
-els.captureDom.addEventListener("click", () => {
-  els.captureHint.textContent = "Loading capture…";
+// Show a step marker and yield so the popup actually REPAINTS before the next
+// (possibly blocking) operation. Whichever letter is left on screen when it
+// freezes is the step that hung.
+function step(label) {
+  els.captureHint.textContent = label;
+  return new Promise((resolve) => setTimeout(resolve, 40));
+}
+
+els.captureDom.addEventListener("click", async () => {
   els.reportOut.hidden = true;
+  try {
+    await step("A: reading storage…");
+    const data = await api.storage.local.get("lastCapture");
 
-  // Read the snapshot the content script writes to storage on every scan.
-  // No live messaging / tabs.query, so this can never hang.
-  api.storage.local
-    .get("lastCapture")
-    .then((data) => {
-      const report = data && data.lastCapture;
-      if (!report) {
-        els.captureHint.textContent =
-          "No capture yet — open a reddit.com tab, wait ~5s, then tap again.";
-        return;
-      }
-      const json = JSON.stringify(report, null, 2);
+    await step("B: got storage");
+    const report = data && data.lastCapture;
+    if (!report) {
+      els.captureHint.textContent =
+        "No capture yet — open reddit.com, wait ~5s, then tap again.";
+      return;
+    }
 
-      // Show it AND copy to clipboard so it can be pasted straight into chat.
-      els.reportOut.hidden = false;
-      els.reportOut.value = json;
+    await step("C: stringifying…");
+    const json = JSON.stringify(report, null, 2);
+
+    await step("D: json = " + json.length + " chars");
+    els.reportOut.hidden = false;
+
+    await step("E: writing to box…");
+    els.reportOut.value = json;
+
+    await step("F: selecting text…");
+    try {
       els.reportOut.focus();
       els.reportOut.select();
+    } catch (e) {
+      /* selection is optional */
+    }
 
-      const age = report.generatedAt ? " (as of " + report.generatedAt + ")" : "";
-      const msg = "Captured " + json.length + " chars" + age + ". ";
-      try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(json).then(
-            () => {
-              els.captureHint.textContent =
-                msg + "Copied to clipboard — paste it to share.";
-            },
-            () => {
-              els.captureHint.textContent =
-                msg + "Select the text below and copy it.";
-            }
-          );
-        } else {
-          els.captureHint.textContent = msg + "Select the text below and copy it.";
-        }
-      } catch (e) {
-        els.captureHint.textContent = msg + "Select the text below and copy it.";
+    await step("G: copying to clipboard…");
+    let copied = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(json);
+        copied = true;
       }
+    } catch (e) {
+      copied = false;
+    }
 
-      // Best-effort file download too — non-blocking.
-      try {
-        const url = URL.createObjectURL(
-          new Blob([json], { type: "application/json" })
-        );
-        if (api.downloads && api.downloads.download) {
-          api.downloads
-            .download({ url, filename: "shutup-reddit-dom.json", saveAs: false })
-            .catch(() => {});
-        }
-      } catch (e) {
-        /* ignore — the textarea/clipboard is the real deliverable */
-      }
-    })
-    .catch((err) => {
-      els.captureHint.textContent = "Could not read capture: " + err;
-    });
+    els.captureHint.textContent =
+      "H: done — " +
+      json.length +
+      " chars" +
+      (copied ? ", copied to clipboard." : ". Copy the text in the box below.");
+  } catch (err) {
+    els.captureHint.textContent =
+      "Froze/failed right after the last letter shown: " + err;
+  }
 });
 
 els.openOptions.addEventListener("click", (e) => {
