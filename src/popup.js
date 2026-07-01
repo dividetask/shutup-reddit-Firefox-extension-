@@ -18,6 +18,7 @@ const els = {
   count: document.getElementById("count"),
   captureDom: document.getElementById("captureDom"),
   captureHint: document.getElementById("captureHint"),
+  reportOut: document.getElementById("reportOut"),
   openOptions: document.getElementById("openOptions")
 };
 
