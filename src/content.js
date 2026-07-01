@@ -218,7 +218,7 @@
     }
 
     return {
-      generatedAt: null, // stamped by the popup (Date is unavailable here)
+      generatedAt: new Date().toISOString(),
       url: location.href,
       userAgent: navigator.userAgent,
       viewport: { w: window.innerWidth, h: window.innerHeight },
@@ -228,6 +228,17 @@
       survivingNagButtons,
       xpromoHints
     };
+  }
+
+  // Persist the latest diagnostics to storage so the popup can read them
+  // directly. This avoids a live popup->content message at capture time, which
+  // is unreliable in Firefox for Android's popup context.
+  function storeDiagnostics() {
+    try {
+      api.storage.local.set({ lastCapture: buildDiagnostics() });
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   function removeKnownPopups() {
@@ -426,6 +437,7 @@
     redditCleanup();
     removeOverlaysIn([document.body], 1200);
     restoreScroll();
+    storeDiagnostics();
   }
 
   let tickCount = 0;
@@ -440,6 +452,7 @@
       removeOverlaysIn([document.body], 600);
     }
     tickCount++;
+    storeDiagnostics(); // keep the debug snapshot fresh for the popup
   }
 
   let scanTimer = null;

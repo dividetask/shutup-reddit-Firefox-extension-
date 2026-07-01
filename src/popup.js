@@ -104,86 +104,67 @@ els.sweepNow.addEventListener("click", () => {
   });
 });
 
-function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("timed out")), ms)
-    )
-  ]);
-}
-
 els.captureDom.addEventListener("click", () => {
-  els.captureHint.textContent = "Capturing…";
+  els.captureHint.textContent = "Loading capture…";
   els.reportOut.hidden = true;
 
-  activeTab().then((tab) => {
-    if (!tab) {
-      els.captureHint.textContent = "No active tab.";
-      return;
-    }
-    // Never block forever: if the page is too busy to answer in 5s, bail out
-    // with actionable advice instead of hanging on "Capturing…".
-    withTimeout(api.tabs.sendMessage(tab.id, { type: "captureDom" }), 5000)
-      .then((report) => {
-        if (!report) {
-          els.captureHint.textContent =
-            "No response — open a reddit.com tab and try again.";
-          return;
-        }
-        report.generatedAt = new Date().toISOString();
-        const json = JSON.stringify(report, null, 2);
-
-        // Primary path: show it in the box AND copy to clipboard, so you can
-        // paste it straight into chat — no adb / Downloads needed.
-        els.reportOut.hidden = false;
-        els.reportOut.value = json;
-        els.reportOut.focus();
-        els.reportOut.select();
-
-        let msg = "Captured " + json.length + " chars. ";
-        try {
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(json).then(
-              () => {
-                els.captureHint.textContent =
-                  msg + "Copied to clipboard — paste it to share.";
-              },
-              () => {
-                els.captureHint.textContent =
-                  msg + "Select the text below and copy it.";
-              }
-            );
-          } else {
-            els.captureHint.textContent =
-              msg + "Select the text below and copy it.";
-          }
-        } catch (e) {
-          els.captureHint.textContent =
-            msg + "Select the text below and copy it.";
-        }
-
-        // Best-effort file download too — non-blocking, flat filename.
-        try {
-          const url = URL.createObjectURL(
-            new Blob([json], { type: "application/json" })
-          );
-          if (api.downloads && api.downloads.download) {
-            api.downloads
-              .download({ url, filename: "shutup-reddit-dom.json", saveAs: false })
-              .catch(() => {});
-          }
-        } catch (e) {
-          /* ignore — the textarea/clipboard is the real deliverable */
-        }
-      })
-      .catch((err) => {
+  // Read the snapshot the content script writes to storage on every scan.
+  // No live messaging / tabs.query, so this can never hang.
+  api.storage.local
+    .get("lastCapture")
+    .then((data) => {
+      const report = data && data.lastCapture;
+      if (!report) {
         els.captureHint.textContent =
-          "Capture " +
-          err.message +
-          ". The page may be busy — reload the extension (press R) and retry.";
-      });
-  });
+          "No capture yet — open a reddit.com tab, wait ~5s, then tap again.";
+        return;
+      }
+      const json = JSON.stringify(report, null, 2);
+
+      // Show it AND copy to clipboard so it can be pasted straight into chat.
+      els.reportOut.hidden = false;
+      els.reportOut.value = json;
+      els.reportOut.focus();
+      els.reportOut.select();
+
+      const age = report.generatedAt ? " (as of " + report.generatedAt + ")" : "";
+      const msg = "Captured " + json.length + " chars" + age + ". ";
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(json).then(
+            () => {
+              els.captureHint.textContent =
+                msg + "Copied to clipboard — paste it to share.";
+            },
+            () => {
+              els.captureHint.textContent =
+                msg + "Select the text below and copy it.";
+            }
+          );
+        } else {
+          els.captureHint.textContent = msg + "Select the text below and copy it.";
+        }
+      } catch (e) {
+        els.captureHint.textContent = msg + "Select the text below and copy it.";
+      }
+
+      // Best-effort file download too — non-blocking.
+      try {
+        const url = URL.createObjectURL(
+          new Blob([json], { type: "application/json" })
+        );
+        if (api.downloads && api.downloads.download) {
+          api.downloads
+            .download({ url, filename: "shutup-reddit-dom.json", saveAs: false })
+            .catch(() => {});
+        }
+      } catch (e) {
+        /* ignore — the textarea/clipboard is the real deliverable */
+      }
+    })
+    .catch((err) => {
+      els.captureHint.textContent = "Could not read capture: " + err;
+    });
 });
 
 els.openOptions.addEventListener("click", (e) => {
