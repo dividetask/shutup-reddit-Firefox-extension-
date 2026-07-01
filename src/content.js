@@ -354,48 +354,97 @@
     return true;
   }
 
-  function removeOverlays() {
-    if (!settings.removeOverlays) return;
-    if (!document.body) return;
-    // Only scan reasonably shallow, high-z candidates to stay cheap.
-    const candidates = document.body.querySelectorAll(
-      "div, section, aside, dialog, ion-modal"
-    );
-    for (const el of candidates) {
-      if (isBlockingOverlay(el)) {
+  /* --------------------------------------------------------------------- *
+   * Main sweep
+   *
+   * Two modes:
+   *  - fullSweep(): scan the whole document. Used on start and manual sweeps.
+   *  - flush(): incremental — only inspect nodes added since the last flush,
+   *    so we don't re-scan Reddit's constantly-mutating DOM on every change.
+   *
+   * The expensive overlay heuristic (getComputedStyle/getBoundingClientRect)
+   * is always bounded by a per-flush element budget to avoid layout thrashing,
+   * which is what made earlier versions sluggish on Reddit.
+   * --------------------------------------------------------------------- */
+  const OVERLAY_TAGS = "div, section, aside, dialog, ion-modal";
+
+  function collectCandidates(roots, cap) {
+    const set = new Set();
+    for (const root of roots) {
+      if (!(root instanceof Element)) continue;
+      if (root.matches && root.matches(OVERLAY_TAGS)) set.add(root);
+      let nodes;
+      try {
+        nodes = root.querySelectorAll(OVERLAY_TAGS);
+      } catch (e) {
+        continue;
+      }
+      for (const n of nodes) {
+        set.add(n);
+        if (set.size >= cap) return Array.from(set);
+      }
+    }
+    return Array.from(set);
+  }
+
+  function removeOverlaysIn(roots, cap) {
+    if (!settings.removeOverlays || !document.body) return;
+    const cands = collectCandidates(roots, cap);
+    for (const el of cands) {
+      if (el.isConnected && isBlockingOverlay(el)) {
         remove(el, "overlay-heuristic");
       }
     }
   }
 
-  /* --------------------------------------------------------------------- *
-   * Main sweep
-   * --------------------------------------------------------------------- */
-  function sweep() {
+  function fullSweep() {
     if (!active) return;
-    removeKnownPopups();
+    removeKnownPopups(); // fast, index-backed selectors
     redditCleanup();
-    removeOverlays();
+    removeOverlaysIn([document.body], 1500);
     restoreScroll();
   }
 
-  // Throttle sweeps triggered by the mutation observer.
-  let scheduled = false;
-  function scheduleSweep() {
-    if (scheduled || !active) return;
-    scheduled = true;
-    requestAnimationFrame(() => {
-      scheduled = false;
-      sweep();
-    });
+  // Element nodes added since the last flush (collected by the observer).
+  let pending = [];
+  let flushTimer = null;
+
+  function flush() {
+    flushTimer = null;
+    if (!active) return;
+    // Cheap passes over the whole document (native selectors / body scroll).
+    removeKnownPopups();
+    redditCleanup();
+    restoreScroll();
+    // Expensive heuristic only on newly-added subtrees, budgeted.
+    if (pending.length) {
+      const roots = pending;
+      pending = [];
+      removeOverlaysIn(roots, 400);
+    }
+  }
+
+  function scheduleFlush() {
+    if (flushTimer || !active) return;
+    flushTimer = setTimeout(flush, 150);
   }
 
   let observer = null;
   function startObserver() {
     if (observer) return;
-    observer = new MutationObserver(() => scheduleSweep());
-    const opts = { childList: true, subtree: true, attributes: true,
-      attributeFilter: ["style", "class"] };
+    observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        const added = m.addedNodes;
+        if (!added || !added.length) continue;
+        for (const n of added) {
+          if (n.nodeType === 1) pending.push(n);
+        }
+      }
+      scheduleFlush();
+    });
+    // childList + subtree only. Observing every attribute change floods the
+    // callback on Reddit and isn't needed to catch injected popups.
+    const opts = { childList: true, subtree: true };
     if (document.documentElement) observer.observe(document.documentElement, opts);
   }
 
@@ -404,6 +453,11 @@
       observer.disconnect();
       observer = null;
     }
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    pending = [];
   }
 
   /* --------------------------------------------------------------------- *
@@ -436,11 +490,15 @@
     if (active) return;
     active = true;
     startObserver();
-    sweep();
+    fullSweep();
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", sweep, { once: true });
+      document.addEventListener("DOMContentLoaded", fullSweep, { once: true });
     }
-    window.addEventListener("load", sweep, { once: true });
+    window.addEventListener("load", fullSweep, { once: true });
+    // A couple of delayed sweeps catch nags that appear a moment after load
+    // (Reddit shows the "Get the app" nag on first scroll/idle).
+    setTimeout(fullSweep, 1200);
+    setTimeout(fullSweep, 3000);
   }
 
   function stop() {
@@ -467,7 +525,7 @@
       case "sweepNow":
         active = true;
         startObserver();
-        sweep();
+        fullSweep();
         sendResponse({ host, active, removedCount });
         break;
       case "settingsChanged":
