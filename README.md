@@ -79,9 +79,8 @@ targeted:
    --android-device <id>`), open Reddit, and trigger the popup.
 2. Open the extension's panel and tap **Capture DOM (debug)**. The report is
    shown in a text box in the panel **and copied to your clipboard**, so you
-   can paste it directly wherever you need it — no `adb` or file wrangling. It
-   also writes a best-effort `shutup-reddit-dom.json` to Downloads as a
-   fallback.
+   can paste it directly wherever you need it. The content script also logs a
+   tagged summary each scan (`SHUTUP_REDDIT ...`) to the console.
 
 The report includes what the extension removed (captured *before* removal),
 any surviving "Get the app" nag buttons with their ancestor chain, and all

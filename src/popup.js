@@ -154,27 +154,6 @@ els.captureDom.addEventListener("click", () => {
       } catch (e) {
         /* clipboard unavailable — the text box already has it */
       }
-
-      // Best-effort file write to Downloads so it can be pulled to a laptop:
-      //   adb pull /sdcard/Download/shutup-reddit-dom.json
-      // Fire-and-forget — we never await it, so it can't hang the UI.
-      try {
-        if (api.downloads && api.downloads.download) {
-          const url = URL.createObjectURL(
-            new Blob([json], { type: "application/json" })
-          );
-          api.downloads
-            .download({
-              url,
-              filename: "shutup-reddit-dom.json",
-              conflictAction: "overwrite",
-              saveAs: false
-            })
-            .catch(() => {});
-        }
-      } catch (e) {
-        /* download unavailable — textarea/clipboard already have it */
-      }
     })
     .catch((err) => {
       els.reportOut.value = "Storage read failed: " + err;
