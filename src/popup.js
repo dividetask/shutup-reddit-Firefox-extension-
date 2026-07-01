@@ -124,12 +124,15 @@ els.captureDom.addEventListener("click", () => {
         const blob = new Blob([json], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const stamp = report.generatedAt.replace(/[:.]/g, "-");
-        const filename = "shutup-reddit-dom-" + stamp + ".json";
+        // Save into a dedicated subfolder so it can be pulled in isolation
+        // (never the whole Downloads directory).
+        const filename =
+          "shutup-reddit-debug/shutup-reddit-dom-" + stamp + ".json";
         if (api.downloads && api.downloads.download) {
           api.downloads
             .download({ url, filename, saveAs: false })
             .then(() => {
-              els.captureHint.textContent = "Saved to Downloads: " + filename;
+              els.captureHint.textContent = "Saved to Downloads/" + filename;
             })
             .catch((err) => {
               els.captureHint.textContent = "Download failed: " + err;

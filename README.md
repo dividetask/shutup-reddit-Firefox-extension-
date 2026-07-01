@@ -78,14 +78,16 @@ targeted:
 1. Load the extension (e.g. `web-ext run --target firefox-android
    --android-device <id>`), open Reddit, and trigger the popup.
 2. Open the extension's panel and tap **Capture DOM (debug)**. It writes
-   `shutup-reddit-dom-<timestamp>.json` to the device's Downloads folder. The
-   report includes what the extension removed (captured *before* removal),
-   any surviving "Get the app" nag buttons with their ancestor chain, and all
-   XPromo-related elements found.
-3. Pull it off the phone and commit it:
+   `shutup-reddit-dom-<timestamp>.json` into a dedicated
+   `Download/shutup-reddit-debug/` folder on the device (its own folder so you
+   never have to share the rest of your Downloads). The report includes what
+   the extension removed (captured *before* removal), any surviving "Get the
+   app" nag buttons with their ancestor chain, and all XPromo-related elements.
+3. Pull just that folder (or a single file) off the phone:
 
    ```sh
-   adb pull /sdcard/Download/shutup-reddit-dom-<timestamp>.json ./debug/
+   # only the extension's debug folder — nothing else from Downloads
+   adb pull /sdcard/Download/shutup-reddit-debug ./debug/
    ```
 
 The `chain` / `class` / `bundlename` fields in that JSON are what a new
