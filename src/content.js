@@ -337,7 +337,8 @@
     if (el === document.body || el === document.documentElement) return false;
 
     const cs = getComputedStyle(el);
-    if (cs.position !== "fixed" && cs.position !== "absolute") return false;
+    const pos = cs.position;
+    if (pos !== "fixed" && pos !== "absolute" && pos !== "sticky") return false;
     if (cs.display === "none" || cs.visibility === "hidden") return false;
     if (parseFloat(cs.opacity) === 0) return false;
 
@@ -347,8 +348,18 @@
     if (vw === 0 || vh === 0) return false;
 
     const coverage = (rect.width * rect.height) / (vw * vh);
-    // Must cover at least ~85% of the viewport to count as a full blocker.
-    if (coverage < 0.85) return false;
+    // A full-screen blocker covers ~85%+ of the viewport.
+    const fullBlocker = coverage >= 0.85;
+    // Reddit's "Get the app" nag is a sheet pinned to the BOTTOM that covers
+    // the lower part of the screen rather than the whole viewport — the case
+    // that was slipping through on subpages.
+    const bottomSheet =
+      (pos === "fixed" || pos === "sticky") &&
+      rect.bottom >= vh - 8 &&
+      rect.top > vh * 0.1 &&
+      rect.height >= vh * 0.2 &&
+      rect.width >= vw * 0.6;
+    if (!fullBlocker && !bottomSheet) return false;
 
     const z = parseInt(cs.zIndex, 10);
     const highZ = !isNaN(z) && z >= 100;
@@ -364,11 +375,23 @@
 
     // Guard: don't nuke the primary content container. If the element holds a
     // large amount of the document's visible text, treat it as content.
-    const elText = (el.innerText || "").trim().length;
+    const txt = (el.innerText || "").trim();
     const docText = (document.body && document.body.innerText
       ? document.body.innerText.trim().length
       : 1) || 1;
-    if (elText / docText > 0.5) return false;
+    if (txt.length / docText > 0.5) return false;
+
+    // A partial (bottom-sheet) element is only removed if it actually looks
+    // like an app/login nag, so we never strip legitimate sticky bottom bars.
+    if (bottomSheet && !fullBlocker) {
+      const cls =
+        el.className && el.className.toString ? el.className.toString() : "";
+      const appish =
+        NAG_TEXT.test(txt) ||
+        /xpromo/i.test(cls) ||
+        /xpromo/i.test(el.tagName.toLowerCase());
+      if (!appish) return false;
+    }
 
     return true;
   }
@@ -440,18 +463,15 @@
     storeDiagnostics();
   }
 
-  let tickCount = 0;
-
   function lightScan() {
     if (!active) return;
     removeKnownPopups(); // native selectors — cheap
     redditCleanup(); // reddit nag text scan + un-blur
     restoreScroll(); // only touches <html>/<body>
-    // The overlay heuristic forces layout, so run it only occasionally.
-    if (tickCount % 4 === 0) {
-      removeOverlaysIn([document.body], 600);
-    }
-    tickCount++;
+    // Safe to run every tick now: the `seen` WeakSet means the overlay
+    // heuristic only pays getComputedStyle cost for elements new since the
+    // last scan, so it stays cheap while catching nags within one interval.
+    removeOverlaysIn([document.body], 800);
     storeDiagnostics(); // keep the debug snapshot fresh for the popup
   }
 
