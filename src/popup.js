@@ -16,6 +16,8 @@ const els = {
   globalEnabled: document.getElementById("globalEnabled"),
   sweepNow: document.getElementById("sweepNow"),
   count: document.getElementById("count"),
+  captureDom: document.getElementById("captureDom"),
+  captureHint: document.getElementById("captureHint"),
   openOptions: document.getElementById("openOptions")
 };
 
@@ -99,6 +101,49 @@ els.sweepNow.addEventListener("click", () => {
     if (res && typeof res.removedCount === "number") {
       els.count.textContent = res.removedCount;
     }
+  });
+});
+
+els.captureDom.addEventListener("click", () => {
+  els.captureHint.textContent = "Capturing…";
+  activeTab().then((tab) => {
+    if (!tab) {
+      els.captureHint.textContent = "No active tab.";
+      return;
+    }
+    api.tabs
+      .sendMessage(tab.id, { type: "captureDom" })
+      .then((report) => {
+        if (!report) {
+          els.captureHint.textContent =
+            "No response (is this a reddit.com tab?).";
+          return;
+        }
+        report.generatedAt = new Date().toISOString();
+        const json = JSON.stringify(report, null, 2);
+        const blob = new Blob([json], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const stamp = report.generatedAt.replace(/[:.]/g, "-");
+        const filename = "shutup-reddit-dom-" + stamp + ".json";
+        if (api.downloads && api.downloads.download) {
+          api.downloads
+            .download({ url, filename, saveAs: false })
+            .then(() => {
+              els.captureHint.textContent = "Saved to Downloads: " + filename;
+            })
+            .catch((err) => {
+              els.captureHint.textContent = "Download failed: " + err;
+              window.open(url, "_blank");
+            });
+        } else {
+          window.open(url, "_blank");
+          els.captureHint.textContent = "Opened report in a new tab.";
+        }
+      })
+      .catch(() => {
+        els.captureHint.textContent =
+          "Content script not reachable on this page.";
+      });
   });
 });
 

@@ -70,6 +70,27 @@ zip -r -FS shutup-reddit-popups.zip manifest.json icons src
   - Shows how many elements were removed on the current page.
 - The options page lets you toggle each removal strategy independently.
 
+## Debugging a popup that isn't removed
+
+If a Reddit popup survives, capture the page's DOM so the exact element can be
+targeted:
+
+1. Load the extension (e.g. `web-ext run --target firefox-android
+   --android-device <id>`), open Reddit, and trigger the popup.
+2. Open the extension's panel and tap **Capture DOM (debug)**. It writes
+   `shutup-reddit-dom-<timestamp>.json` to the device's Downloads folder. The
+   report includes what the extension removed (captured *before* removal),
+   any surviving "Get the app" nag buttons with their ancestor chain, and all
+   XPromo-related elements found.
+3. Pull it off the phone and commit it:
+
+   ```sh
+   adb pull /sdcard/Download/shutup-reddit-dom-<timestamp>.json ./debug/
+   ```
+
+The `chain` / `class` / `bundlename` fields in that JSON are what a new
+selector is built from.
+
 ## Project layout
 
 ```

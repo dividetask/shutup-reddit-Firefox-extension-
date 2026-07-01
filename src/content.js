@@ -123,11 +123,39 @@
   }
 
   /* --------------------------------------------------------------------- *
-   * Removal helpers
+   * Removal helpers + diagnostics log
    * --------------------------------------------------------------------- */
+  // Rolling log of what we removed, captured BEFORE removal so the DOM dump
+  // still shows the popup even after it's gone. Read via the "captureDom"
+  // message from the popup's debug button.
+  const removalLog = [];
+
+  function snapshot(el, reason) {
+    try {
+      const cs = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      const cls =
+        el.className && el.className.toString ? el.className.toString() : "";
+      return {
+        reason,
+        tag: el.tagName ? el.tagName.toLowerCase() : "?",
+        id: el.id || "",
+        class: cls,
+        bundlename: (el.getAttribute && el.getAttribute("bundlename")) || "",
+        position: cs.position,
+        zIndex: cs.zIndex,
+        rect: { w: Math.round(r.width), h: Math.round(r.height) },
+        html: (el.outerHTML || "").slice(0, 2500)
+      };
+    } catch (e) {
+      return { reason, error: String(e) };
+    }
+  }
+
   function remove(el, reason) {
     if (!el || !el.parentNode) return;
     try {
+      if (removalLog.length < 200) removalLog.push(snapshot(el, reason));
       el.remove();
       removedCount++;
       report();
@@ -136,6 +164,66 @@
     } catch (e) {
       /* ignore */
     }
+  }
+
+  // Build a full diagnostic report of the current page state.
+  function buildDiagnostics() {
+    const survivingNagButtons = [];
+    try {
+      const clickable = document.querySelectorAll("button, a, [role='button']");
+      for (const el of clickable) {
+        const t = (el.textContent || "").trim();
+        if (t.length > 80 || !NAG_TEXT.test(t)) continue;
+        const chain = [];
+        let n = el;
+        for (let i = 0; n && i < 8; i++, n = n.parentElement) {
+          const cs = getComputedStyle(n);
+          const cls =
+            n.className && n.className.toString ? n.className.toString() : "";
+          chain.push({
+            tag: n.tagName.toLowerCase(),
+            id: n.id || "",
+            class: cls,
+            position: cs.position,
+            zIndex: cs.zIndex
+          });
+        }
+        const wrap = el.closest("div") || el;
+        survivingNagButtons.push({
+          buttonText: t,
+          chain,
+          html: (wrap.outerHTML || "").slice(0, 3000)
+        });
+      }
+    } catch (e) {
+      /* ignore */
+    }
+
+    const xpromoHints = [];
+    try {
+      const hinted = document.querySelectorAll(
+        "[class*='XPromo'], [class*='xpromo'], xpromo-app-selector, [bundlename], faceplate-dialog, shreddit-signup-drawer"
+      );
+      let i = 0;
+      for (const el of hinted) {
+        if (i++ >= 50) break;
+        xpromoHints.push(snapshot(el, "hint"));
+      }
+    } catch (e) {
+      /* ignore */
+    }
+
+    return {
+      generatedAt: null, // stamped by the popup (Date is unavailable here)
+      url: location.href,
+      userAgent: navigator.userAgent,
+      viewport: { w: window.innerWidth, h: window.innerHeight },
+      active,
+      removedCount,
+      removed: removalLog.slice(-200),
+      survivingNagButtons,
+      xpromoHints
+    };
   }
 
   function removeKnownPopups() {
@@ -384,6 +472,9 @@
         break;
       case "settingsChanged":
         loadSettings().then(applySettings);
+        break;
+      case "captureDom":
+        sendResponse(buildDiagnostics());
         break;
     }
     return true;
