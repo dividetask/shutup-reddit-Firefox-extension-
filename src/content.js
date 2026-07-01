@@ -71,12 +71,17 @@
       "[bundlename^='mweb_xpromo']",
       "shreddit-async-loader[bundlename*='xpromo']",
       "shreddit-app-promo",
-      // login / signup walls and their dimming layer
+      // login / signup walls and their dimming layer. NOTE: do NOT match a
+      // bare `faceplate-dialog` — Reddit uses that element for the search box,
+      // share sheet, etc., and removing those breaks the site. Only target
+      // login/signup ones by id.
       ".login-required",
       "shreddit-signup-drawer",
       "shreddit-async-loader[bundlename*='signup']",
       "shreddit-async-loader[bundlename*='login']",
-      "faceplate-dialog",
+      "faceplate-dialog[id*='login' i]",
+      "faceplate-dialog[id*='signup' i]",
+      "faceplate-dialog[id*='register' i]",
       // generic blurred wrapper reddit drops over content
       ".PromotedPostCTA"
     ],
@@ -217,6 +222,50 @@
       /* ignore */
     }
 
+    // Any fixed/sticky element anchored to the lower part of the screen — the
+    // "Get the app" sheet lives here even when it isn't a <button> and has no
+    // XPromo class, so this is what actually reveals it.
+    const bottomFixedElements = [];
+    try {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const all = document.body
+        ? document.body.querySelectorAll("div, section, aside, dialog")
+        : [];
+      let scanned = 0;
+      for (const el of all) {
+        if (scanned++ > 2500) break;
+        if (bottomFixedElements.length >= 12) break;
+        const r = el.getBoundingClientRect();
+        // Must be in the lower half and reasonably large.
+        if (r.width < vw * 0.4 || r.height < vh * 0.1) continue;
+        if (r.bottom < vh * 0.5) continue;
+        const cs = getComputedStyle(el);
+        if (cs.position !== "fixed" && cs.position !== "sticky") continue;
+        if (cs.display === "none" || cs.visibility === "hidden") continue;
+        bottomFixedElements.push({
+          tag: el.tagName.toLowerCase(),
+          id: el.id || "",
+          class:
+            el.className && el.className.toString
+              ? el.className.toString()
+              : "",
+          position: cs.position,
+          zIndex: cs.zIndex,
+          rect: {
+            w: Math.round(r.width),
+            h: Math.round(r.height),
+            top: Math.round(r.top),
+            bottom: Math.round(r.bottom)
+          },
+          text: (el.innerText || "").trim().slice(0, 120),
+          html: (el.outerHTML || "").slice(0, 1500)
+        });
+      }
+    } catch (e) {
+      /* ignore */
+    }
+
     return {
       generatedAt: new Date().toISOString(),
       url: location.href,
@@ -226,6 +275,7 @@
       removedCount,
       removed: removalLog.slice(-40),
       survivingNagButtons,
+      bottomFixedElements,
       xpromoHints
     };
   }
@@ -253,12 +303,14 @@
             diag.removedCount +
             " survivingNags=" +
             diag.survivingNagButtons.length +
+            " bottomFixed=" +
+            diag.bottomFixedElements.length +
             " xpromoHints=" +
             diag.xpromoHints.length +
             " " +
             JSON.stringify({
               survivingNagButtons: diag.survivingNagButtons,
-              xpromoHints: diag.xpromoHints
+              bottomFixedElements: diag.bottomFixedElements
             })
         );
       } catch (e) {
