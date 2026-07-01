@@ -61,15 +61,21 @@
   // hostname suffix -> selectors that only apply there.
   const SITE_SELECTORS = {
     "reddit.com": [
-      // "Continue in app" / open-in-app interstitials
+      // "Get the app to keep using Reddit" / "Continue in app" XPromo nags.
+      // Reddit uses many XPromo* class variants plus mweb_xpromo bundles;
+      // match them broadly by prefix/substring.
       "xpromo-app-selector",
-      ".XPromoPopup",
-      "[bundlename='mweb_xpromo_interstitial_recommendations_ios']",
-      "[bundlename='mweb_xpromo_interstitial_recommendations_android']",
+      "xpromo-nsfw-blocking-container",
+      "[class^='XPromo']",
+      "[class*=' XPromo']",
+      "[bundlename^='mweb_xpromo']",
+      "shreddit-async-loader[bundlename*='xpromo']",
+      "shreddit-app-promo",
       // login / signup walls and their dimming layer
       ".login-required",
       "shreddit-signup-drawer",
-      "shreddit-async-loader[bundlename='desktop_signup_drawer']",
+      "shreddit-async-loader[bundlename*='signup']",
+      "shreddit-async-loader[bundlename*='login']",
       "faceplate-dialog",
       // generic blurred wrapper reddit drops over content
       ".PromotedPostCTA"
@@ -146,6 +152,68 @@
   }
 
   /* --------------------------------------------------------------------- *
+   * Reddit-specific cleanup
+   *
+   * The mobile "Get the app to keep using Reddit" nag sometimes ships with
+   * obfuscated class names, so selectors alone can miss it. As a fallback we
+   * match by the button/link text it always contains and remove the nag's
+   * banner/overlay ancestor. Reddit also blurs the content behind the nag —
+   * we clear that so the page is readable once the nag is gone.
+   * --------------------------------------------------------------------- */
+  const isReddit = host === "reddit.com" || host.endsWith(".reddit.com");
+
+  const NAG_TEXT = /(keep using reddit|get the app|continue in (the )?(app|browser)|open in app|use the reddit app)/i;
+
+  function redditCleanup() {
+    if (!isReddit || !document.body) return;
+
+    // 1) Text-based nag removal. Look at small interactive elements only
+    //    (buttons/links) so we never match a whole article by its body text.
+    const clickable = document.querySelectorAll(
+      "button, a, [role='button']"
+    );
+    for (const el of clickable) {
+      const label = (el.textContent || "").trim();
+      if (label.length > 60 || !NAG_TEXT.test(label)) continue;
+      // Walk up to the enclosing banner/overlay: a fixed/sticky/absolute
+      // ancestor, or a known XPromo wrapper. Cap the climb so we don't delete
+      // the whole page.
+      let node = el;
+      let target = null;
+      for (let i = 0; node && node !== document.body && i < 8; i++) {
+        const cs = getComputedStyle(node);
+        const cls = node.className && node.className.toString
+          ? node.className.toString()
+          : "";
+        if (
+          cs.position === "fixed" ||
+          cs.position === "sticky" ||
+          /XPromo|xpromo|app-?promo|nag|banner|drawer|bottom-?sheet/i.test(cls) ||
+          /xpromo|app-selector|bottom-sheet/i.test(node.tagName.toLowerCase())
+        ) {
+          target = node;
+        }
+        node = node.parentElement;
+      }
+      remove(target || el.closest("div") || el, "reddit-nag-text");
+    }
+
+    // 2) Un-blur content Reddit dims behind the nag.
+    const blurred = document.querySelectorAll(
+      "[style*='blur'], .XPromoNsfwBlockingContainer, [class*='blur']"
+    );
+    for (const el of blurred) {
+      const cs = getComputedStyle(el);
+      if (cs.filter && cs.filter.indexOf("blur") !== -1) {
+        el.style.setProperty("filter", "none", "important");
+      }
+      if (cs.webkitFilter && cs.webkitFilter.indexOf("blur") !== -1) {
+        el.style.setProperty("-webkit-filter", "none", "important");
+      }
+    }
+  }
+
+  /* --------------------------------------------------------------------- *
    * Heuristic overlay detection
    *
    * A "blocking overlay" is an element that:
@@ -218,6 +286,7 @@
   function sweep() {
     if (!active) return;
     removeKnownPopups();
+    redditCleanup();
     removeOverlays();
     restoreScroll();
   }
