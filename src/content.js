@@ -145,7 +145,7 @@
         position: cs.position,
         zIndex: cs.zIndex,
         rect: { w: Math.round(r.width), h: Math.round(r.height) },
-        html: (el.outerHTML || "").slice(0, 2500)
+        html: (el.outerHTML || "").slice(0, 1200)
       };
     } catch (e) {
       return { reason, error: String(e) };
@@ -224,7 +224,7 @@
       viewport: { w: window.innerWidth, h: window.innerHeight },
       active,
       removedCount,
-      removed: removalLog.slice(-200),
+      removed: removalLog.slice(-40),
       survivingNagButtons,
       xpromoHints
     };
@@ -361,15 +361,19 @@
   /* --------------------------------------------------------------------- *
    * Main sweep
    *
-   * Two modes:
-   *  - fullSweep(): scan the whole document. Used on start and manual sweeps.
-   *  - flush(): incremental — only inspect nodes added since the last flush,
-   *    so we don't re-scan Reddit's constantly-mutating DOM on every change.
+   * The popups we target (login walls, "Get the app" nags) appear several
+   * seconds AFTER load, not at load — so we deliberately do nothing heavy up
+   * front and instead run a cheap scan on a fixed interval. No MutationObserver:
+   * observing Reddit's constantly-mutating DOM is what saturated the main
+   * thread and made both the extension and the debug capture feel frozen.
    *
-   * The expensive overlay heuristic (getComputedStyle/getBoundingClientRect)
-   * is always bounded by a per-flush element budget to avoid layout thrashing,
-   * which is what made earlier versions sluggish on Reddit.
+   *  - lightScan():  cheap selectors + Reddit nag text + scroll unlock. Runs
+   *                  every SCAN_INTERVAL ms. The pricier overlay heuristic only
+   *                  runs on every 4th tick to keep the common case near-free.
+   *  - fullSweep():  one thorough pass, for the manual "Remove popups now".
    * --------------------------------------------------------------------- */
+  const SCAN_INTERVAL = 5000; // ms between periodic scans
+  const FIRST_SCAN_DELAY = 2500; // keep page load itself smooth
   const OVERLAY_TAGS = "div, section, aside, dialog, ion-modal";
 
   function collectCandidates(roots, cap) {
@@ -405,63 +409,37 @@
     if (!active) return;
     removeKnownPopups(); // fast, index-backed selectors
     redditCleanup();
-    removeOverlaysIn([document.body], 1500);
+    removeOverlaysIn([document.body], 1200);
     restoreScroll();
   }
 
-  // Element nodes added since the last flush (collected by the observer).
-  let pending = [];
-  let flushTimer = null;
+  let tickCount = 0;
 
-  function flush() {
-    flushTimer = null;
+  function lightScan() {
     if (!active) return;
-    // Cheap passes over the whole document (native selectors / body scroll).
-    removeKnownPopups();
-    redditCleanup();
-    restoreScroll();
-    // Expensive heuristic only on newly-added subtrees, budgeted.
-    if (pending.length) {
-      const roots = pending;
-      pending = [];
-      removeOverlaysIn(roots, 400);
+    removeKnownPopups(); // native selectors — cheap
+    redditCleanup(); // reddit nag text scan + un-blur
+    restoreScroll(); // only touches <html>/<body>
+    // The overlay heuristic forces layout, so run it only occasionally.
+    if (tickCount % 4 === 0) {
+      removeOverlaysIn([document.body], 600);
     }
+    tickCount++;
   }
 
-  function scheduleFlush() {
-    if (flushTimer || !active) return;
-    flushTimer = setTimeout(flush, 150);
+  let scanTimer = null;
+  function startScanning() {
+    if (scanTimer) return;
+    scanTimer = setInterval(lightScan, SCAN_INTERVAL);
+    // First scan a couple seconds in (not at load).
+    setTimeout(lightScan, FIRST_SCAN_DELAY);
   }
 
-  let observer = null;
-  function startObserver() {
-    if (observer) return;
-    observer = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        const added = m.addedNodes;
-        if (!added || !added.length) continue;
-        for (const n of added) {
-          if (n.nodeType === 1) pending.push(n);
-        }
-      }
-      scheduleFlush();
-    });
-    // childList + subtree only. Observing every attribute change floods the
-    // callback on Reddit and isn't needed to catch injected popups.
-    const opts = { childList: true, subtree: true };
-    if (document.documentElement) observer.observe(document.documentElement, opts);
-  }
-
-  function stopObserver() {
-    if (observer) {
-      observer.disconnect();
-      observer = null;
+  function stopScanning() {
+    if (scanTimer) {
+      clearInterval(scanTimer);
+      scanTimer = null;
     }
-    if (flushTimer) {
-      clearTimeout(flushTimer);
-      flushTimer = null;
-    }
-    pending = [];
   }
 
   /* --------------------------------------------------------------------- *
@@ -493,21 +471,13 @@
   function start() {
     if (active) return;
     active = true;
-    startObserver();
-    fullSweep();
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", fullSweep, { once: true });
-    }
-    window.addEventListener("load", fullSweep, { once: true });
-    // A couple of delayed sweeps catch nags that appear a moment after load
-    // (Reddit shows the "Get the app" nag on first scroll/idle).
-    setTimeout(fullSweep, 1200);
-    setTimeout(fullSweep, 3000);
+    // Nothing heavy at load — just kick off the periodic scanner.
+    startScanning();
   }
 
   function stop() {
     active = false;
-    stopObserver();
+    stopScanning();
   }
 
   function applySettings() {
@@ -528,7 +498,7 @@
         break;
       case "sweepNow":
         active = true;
-        startObserver();
+        startScanning();
         fullSweep();
         sendResponse({ host, active, removedCount });
         break;
@@ -536,7 +506,11 @@
         loadSettings().then(applySettings);
         break;
       case "captureDom":
-        sendResponse(buildDiagnostics());
+        try {
+          sendResponse(buildDiagnostics());
+        } catch (e) {
+          sendResponse({ error: String(e) });
+        }
         break;
     }
     return true;
