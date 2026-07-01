@@ -265,8 +265,12 @@
       "button, a, [role='button']"
     );
     for (const el of clickable) {
+      if (seen.has(el)) continue; // inspected on an earlier scan
       const label = (el.textContent || "").trim();
-      if (label.length > 60 || !NAG_TEXT.test(label)) continue;
+      if (label.length > 60 || !NAG_TEXT.test(label)) {
+        seen.add(el); // not a nag — skip it next time
+        continue;
+      }
       // Walk up to the enclosing banner/overlay: a fixed/sticky/absolute
       // ancestor, or a known XPromo wrapper. Cap the climb so we don't delete
       // the whole page.
@@ -376,11 +380,19 @@
   const FIRST_SCAN_DELAY = 2500; // keep page load itself smooth
   const OVERLAY_TAGS = "div, section, aside, dialog, ion-modal";
 
+  // Elements we've already inspected. On each scan we skip these so we only
+  // pay the cost of examining elements that appeared since last time. A
+  // WeakSet holds elements weakly, so removed nodes are garbage-collected and
+  // this never leaks. Reset by fullSweep() when a fresh full check is wanted.
+  let seen = new WeakSet();
+
   function collectCandidates(roots, cap) {
     const set = new Set();
     for (const root of roots) {
       if (!(root instanceof Element)) continue;
-      if (root.matches && root.matches(OVERLAY_TAGS)) set.add(root);
+      if (root.matches && root.matches(OVERLAY_TAGS) && !seen.has(root)) {
+        set.add(root);
+      }
       let nodes;
       try {
         nodes = root.querySelectorAll(OVERLAY_TAGS);
@@ -388,6 +400,7 @@
         continue;
       }
       for (const n of nodes) {
+        if (seen.has(n)) continue; // already inspected on an earlier scan
         set.add(n);
         if (set.size >= cap) return Array.from(set);
       }
@@ -399,6 +412,7 @@
     if (!settings.removeOverlays || !document.body) return;
     const cands = collectCandidates(roots, cap);
     for (const el of cands) {
+      seen.add(el); // don't re-examine this element next scan
       if (el.isConnected && isBlockingOverlay(el)) {
         remove(el, "overlay-heuristic");
       }
@@ -407,6 +421,7 @@
 
   function fullSweep() {
     if (!active) return;
+    seen = new WeakSet(); // force a fresh look at every element
     removeKnownPopups(); // fast, index-backed selectors
     redditCleanup();
     removeOverlaysIn([document.body], 1200);
