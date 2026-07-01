@@ -232,12 +232,38 @@
 
   // Persist the latest diagnostics to storage so the popup can read them
   // directly. This avoids a live popup->content message at capture time, which
-  // is unreliable in Firefox for Android's popup context.
+  // is unreliable in Firefox for Android's popup context. Also log a compact,
+  // tagged summary to the console so it can be watched over adb:
+  //   adb logcat | grep SHUTUP_REDDIT
+  // (enable about:config `devtools.console.stdout.content` = true on the phone
+  // to route content console output to logcat).
   function storeDiagnostics() {
+    let diag;
     try {
-      api.storage.local.set({ lastCapture: buildDiagnostics() });
+      diag = buildDiagnostics();
+      api.storage.local.set({ lastCapture: diag });
     } catch (e) {
       /* ignore */
+    }
+    if (diag) {
+      try {
+        // eslint-disable-next-line no-console
+        console.log(
+          "SHUTUP_REDDIT removed=" +
+            diag.removedCount +
+            " survivingNags=" +
+            diag.survivingNagButtons.length +
+            " xpromoHints=" +
+            diag.xpromoHints.length +
+            " " +
+            JSON.stringify({
+              survivingNagButtons: diag.survivingNagButtons,
+              xpromoHints: diag.xpromoHints
+            })
+        );
+      } catch (e) {
+        /* ignore */
+      }
     }
   }
 

@@ -104,65 +104,82 @@ els.sweepNow.addEventListener("click", () => {
   });
 });
 
-// Show a step marker and yield so the popup actually REPAINTS before the next
-// (possibly blocking) operation. Whichever letter is left on screen when it
-// freezes is the step that hung.
-function step(label) {
-  els.captureHint.textContent = label;
-  return new Promise((resolve) => setTimeout(resolve, 40));
-}
+els.captureDom.addEventListener("click", () => {
+  // Always keep the text box visible and write every state into it, so the
+  // result can never be "nothing on screen".
+  els.reportOut.hidden = false;
+  els.reportOut.value = "reading storage…";
+  els.captureHint.textContent = "Reading…";
 
-els.captureDom.addEventListener("click", async () => {
-  els.reportOut.hidden = true;
-  try {
-    await step("A: reading storage…");
-    const data = await api.storage.local.get("lastCapture");
-
-    await step("B: got storage");
-    const report = data && data.lastCapture;
-    if (!report) {
-      els.captureHint.textContent =
-        "No capture yet — open reddit.com, wait ~5s, then tap again.";
-      return;
-    }
-
-    await step("C: stringifying…");
-    const json = JSON.stringify(report, null, 2);
-
-    await step("D: json = " + json.length + " chars");
-    els.reportOut.hidden = false;
-
-    await step("E: writing to box…");
-    els.reportOut.value = json;
-
-    await step("F: selecting text…");
-    try {
-      els.reportOut.focus();
-      els.reportOut.select();
-    } catch (e) {
-      /* selection is optional */
-    }
-
-    await step("G: copying to clipboard…");
-    let copied = false;
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(json);
-        copied = true;
+  // Read ALL storage so we can also report what's there if lastCapture is
+  // missing (useful for diagnosing whether the content script wrote anything).
+  api.storage.local
+    .get(null)
+    .then((all) => {
+      const report = all && all.lastCapture;
+      if (!report) {
+        els.reportOut.value =
+          "No capture stored yet.\n\nStorage keys present: [" +
+          Object.keys(all || {}).join(", ") +
+          "]\n\nOpen a reddit.com tab and wait ~10s (the first scan runs 5s " +
+          "after the page settles), then tap Capture again.";
+        els.captureHint.textContent = "No capture yet.";
+        return;
       }
-    } catch (e) {
-      copied = false;
-    }
 
-    els.captureHint.textContent =
-      "H: done — " +
-      json.length +
-      " chars" +
-      (copied ? ", copied to clipboard." : ". Copy the text in the box below.");
-  } catch (err) {
-    els.captureHint.textContent =
-      "Froze/failed right after the last letter shown: " + err;
-  }
+      let json;
+      try {
+        json = JSON.stringify(report, null, 2);
+      } catch (e) {
+        els.reportOut.value = "Could not stringify report: " + e;
+        els.captureHint.textContent = "Error.";
+        return;
+      }
+
+      els.reportOut.value = json;
+      els.captureHint.textContent =
+        "Captured " + json.length + " chars. Long-press the box to copy.";
+
+      // Best-effort clipboard copy — never allowed to break the display above.
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(json).then(
+            () => {
+              els.captureHint.textContent =
+                "Copied " + json.length + " chars to clipboard — paste to share.";
+            },
+            () => {}
+          );
+        }
+      } catch (e) {
+        /* clipboard unavailable — the text box already has it */
+      }
+
+      // Best-effort file write to Downloads so it can be pulled to a laptop:
+      //   adb pull /sdcard/Download/shutup-reddit-dom.json
+      // Fire-and-forget — we never await it, so it can't hang the UI.
+      try {
+        if (api.downloads && api.downloads.download) {
+          const url = URL.createObjectURL(
+            new Blob([json], { type: "application/json" })
+          );
+          api.downloads
+            .download({
+              url,
+              filename: "shutup-reddit-dom.json",
+              conflictAction: "overwrite",
+              saveAs: false
+            })
+            .catch(() => {});
+        }
+      } catch (e) {
+        /* download unavailable — textarea/clipboard already have it */
+      }
+    })
+    .catch((err) => {
+      els.reportOut.value = "Storage read failed: " + err;
+      els.captureHint.textContent = "Read error.";
+    });
 });
 
 els.openOptions.addEventListener("click", (e) => {
